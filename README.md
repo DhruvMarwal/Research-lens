@@ -171,3 +171,10 @@ The last two questions are the ones that should be used to demonstrate the retri
 ## 7. Saving your work
 
 The last two cells zip up everything you'd need to resume later (papers, extracted text, FAISS index, chunks, eval results) and download it, with a matching cell to unzip it back into a fresh Colab session.
+---
+
+## 👤 Authors
+
+- GitHub: [Dhruv Marwal](https://github.com/DhruvMarwal) , [Priyanshu Jha](https://github.com/Priyanshu0423) , [Shivang Jain](https://github.com/Xopse)
+- LinkedIn: [Dhruv Marwal](https://linkedin.com/in/dhruvmarwal) , [Priyanshu Jha](https://linkedin.com/in/priyanshujha-) , [Shivang Jain](https://linkedin.com/in/shivang-jain-69602132a)
+---
