@@ -159,7 +159,7 @@ The last two questions are the ones that should be used to demonstrate the retri
 
 ---
 
-## 6. Known, honest limitations (worth stating up front rather than hiding)
+## 6. Known, honest limitations
 
 - **Memory only helps the answer, not the search.** A follow-up like "which of those is easiest to fix?" gets its pronouns resolved for the purpose of writing the answer, but the retrieval step still searches using the literal follow-up text — it doesn't know what "those" refers to. A proper fix would add a "condense question" step before retrieval; that's flagged here, not built.
 - **Section labels are tuned to this paper set.** The heading vocabulary (abstract/methods/discussion/etc.) assumes IMRaD-structured academic papers. It's fine because it's used only as a citation label, never as a retrieval filter — but it wouldn't recognize headings in, say, a legal contract or financial filing.
