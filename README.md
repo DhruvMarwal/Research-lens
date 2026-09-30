@@ -1,126 +1,122 @@
 # Research Gap Analyzer
 
-A cross-paper RAG assistant built with LangChain (Lab 9, Activity 1: Academic Research Assistant).
+**An AI research assistant that only answers from your papers, and shows you the page number for every claim.**
 
-It reads a small set of research PDFs and answers questions **only from what is written in them**, with a page number attached to every claim so the answers can be checked. It can:
+You give it a few research PDFs. You ask a question. It answers using only what is written in those papers, and every statement comes with a page number so you can open the PDF and check it.
 
-- answer a question about **one paper**,
-- **synthesise across all papers** ("what limitations do they share?"), or
-- return a **structured list of research gaps**, each with the papers that mention it and page-cited evidence. This is the main deliverable.
-
-**Domain:** depression detection with fuzzy, neuro-fuzzy and ML methods (5 open-access papers, 270 chunks).
+Built with LangChain for Lab 9, Activity 1 (Academic Research Assistant).
 **Team and roles:** *(fill in names and contributions)*
 
-Everything runs in Google Colab. Embeddings and search are local (no key needed). The LLM is Groq `openai/gpt-oss-120b` (used for the reported results), with Gemini as a fallback.
+---
+
+## 1. The problem in plain words
+
+If you read 5 papers on the same topic and want to know *"what is still unsolved?"*, you have to re-read all five and keep notes. A normal chatbot can't be trusted here, because it may answer from memory and make things up.
+
+This tool reads the papers for you, but it is **not allowed to say anything that isn't in them**, and it has to **cite the page**. That is what RAG (Retrieval-Augmented Generation) means: first *retrieve* the relevant text, then let the AI *generate* an answer from only that text.
+
+It can do three things:
+
+| Mode | You ask | You get |
+|---|---|---|
+| **One paper** | "What limitations does the Saha paper mention?" | A short answer with page numbers |
+| **All papers** | "What limitations are repeated across the papers?" | One combined answer saying where papers agree or differ |
+| **Structured gaps** | Same question | A clean list: each gap, which papers have it, and the evidence with page numbers (main deliverable) |
+
+**Our papers:** 5 open-access papers on depression detection using fuzzy logic, neuro-fuzzy systems and machine learning (Adegboye2021, Khan2024, Chattopadhyay2017, Zulfiker2021, Saha2024). Together they become 270 searchable chunks.
 
 ---
 
-## Files in this submission
+## 2. See it work (real output from our notebook)
 
-| File | What it is |
-|---|---|
-| `GAI_ResearchGapAnalyzer_clean.ipynb` | The working notebook (Steps 0 to 12) |
-| `README.md` | This file |
-| `Architecture_Phase1.png` | Architecture diagram (must sit next to this README or the image below shows as broken) |
-| `eval/results_v1.json` | Evaluation answers from the **old** pipeline (Gemini, section-gated retrieval) |
-| `eval/results_v2_groq.json` | Evaluation answers from the **fixed** pipeline (Groq, whole-paper hybrid retrieval) |
-| `eval/structured_gaps_sample.json` | Sample structured output from Step 9 |
+**Question asked:** *"What limitations are repeatedly mentioned across the papers?"*
 
----
-
-## Architecture
+**What the tool returned** (3 of the 8 gaps it found):
 
 ```
-Research Papers (5 PDFs)
-      │
-      ▼
-PDF Text Extraction  (PyMuPDF, two-column aware, [[PAGE n]] markers)
-      │
-      ▼
-Section-aware Chunking  (~1000 chars, 150 overlap, never crosses a section)
-      │
-      ▼
-Metadata Tagging  (paper, section, page)
-      │
-      ▼
-Sentence Embeddings  (all-MiniLM-L6-v2, local)
-      │
-      ▼
-FAISS Vector Store
-      │
-      ▼
-Hybrid Retrieval, per paper  (FAISS + BM25, fused with Reciprocal Rank Fusion)
-      │
-      ▼
-Per-Paper Evidence
-      │
-      ▼
-LLM  (Groq gpt-oss-120b, Gemini fallback)
-      │
-      ├──────────────┐
-      ▼              ▼
-Single-Paper    Cross-Paper Synthesis (map → reduce)
-Analysis              │
-                      ▼
-            Structured Research Gap Output (Pydantic)
+GAP: Both studies use small, demographically narrow samples, limiting generalizability.
+  Papers: ['Adegboye2021', 'Saha2024']
+  - [Adegboye2021 p7] The system was evaluated on a relatively small test set (40 cases).
+  - [Saha2024 p16]    The sample is limited in size and demographic breadth; a more varied
+                      sample representing many populations would improve generalizability.
+
+GAP: EEG data collection is restricted to frontal-lobe electrodes, introducing spatial bias.
+  Papers: ['Khan2024']
+  - [Khan2024 p24]    The study selected only frontal-lobe electrodes to keep the sensor count
+                      low, which introduces a certain degree of bias toward the frontal lobe.
+
+GAP: Data were collected via email or social media from voluntary participants,
+     creating a self-selection bias.
+  Papers: ['Saha2024']
+  - [Saha2024 p7]     Data were collected via email or social media from voluntary participants...
+```
+
+**How to read this:** each gap says *which papers* have it, and each piece of evidence says *which paper and which page*. You can open Saha2024 page 16 and check the sentence. The full output is saved in `eval/structured_gaps_sample.json`.
+
+**One more example** (single paper, same kind of answer, paste your own output here after running the demo cell in Section 4):
+
+```
+(paste the output of:  ask("What limitations does this paper mention?", paper="Saha")  )
+```
+
+---
+
+## 3. How it works (5 steps, no jargon)
+
+Think of a librarian who finds the right pages, hands only those pages to a writer, and makes the writer cite them.
+
+```
+  PDFs
+   │  1. READ        Extract the text, keep track of page numbers
+   ▼
+  Chunks
+   │  2. CUT         Split each paper into ~1000-character pieces (chunks).
+   │                 Each chunk remembers: which paper, which section, which page
+   ▼
+  Search index
+   │  3. INDEX       Turn every chunk into numbers (an "embedding") so we can
+   │                 search by meaning. Stored in FAISS.
+   ▼
+  Relevant chunks
+   │  4. FIND        For your question, pick the best chunks FROM EACH PAPER
+   │                 (by meaning + by keywords)
+   ▼
+  LLM (Groq / Gemini)
+   │  5. ANSWER      The AI gets ONLY those chunks and must cite pages
+   ▼
+  Answer with page numbers
 ```
 
 ![Pipeline architecture](Architecture_Phase1.png)
 
+> `Architecture_Phase1.png` must sit in the same folder as this README, or the image shows as broken.
+
+### Why each choice was made
+
+| Choice | Why |
+|---|---|
+| **Chunks of ~1000 characters** | Small enough to be specific, big enough to keep a full idea. 150 characters overlap so ideas aren't cut in half. |
+| **Never cross a section boundary** | A chunk is either Methods or Results, never a mix, so the section label is correct. |
+| **Metadata (paper, section, page)** | This is what makes page citations possible. |
+| **Two kinds of search (FAISS + BM25)** | FAISS finds chunks that *mean* the same thing ("shortcoming" = "limitation"). BM25 finds exact words ("PCA"). Each is weak where the other is strong, so we combine them (Reciprocal Rank Fusion). |
+| **Search each paper separately** | A long paper (74 chunks) cannot drown out a short one (20 chunks). Every paper gets a voice. |
+| **No section filter** | See Section 5: this was our biggest lesson. |
+| **Map-reduce for all papers** | *Map:* summarise each paper on its own (5 AI calls). *Reduce:* merge the 5 summaries (1 call). This keeps each paper's evidence separate until the end. |
+| **Pydantic structured output** | Forces the AI to return data (gap, papers, evidence) instead of a loose paragraph, so it is clean and checkable. |
+| **Groq `gpt-oss-120b`, Gemini as fallback** | Both have free tiers. Gemini's quota ran out mid-evaluation, so the final results used Groq. |
+
 ### LangChain components used
 
-| Component | Where |
+| Component | Used for |
 |---|---|
-| `RecursiveCharacterTextSplitter`, `Document` | Step 2 (chunking) |
-| `HuggingFaceEmbeddings`, `FAISS` vector store | Step 3 (index) |
-| `BaseRetriever` (custom `HybridPerPaperRetriever`) | Step 4 (retrieval) |
-| `ChatPromptTemplate`, LCEL chains (`prompt \| llm \| parser`), `StrOutputParser` | Steps 7 and 8 |
-| `PydanticOutputParser` | Step 9 (structured output) |
-| `RunnableWithMessageHistory`, `MessagesPlaceholder` | Step 10 (memory) |
+| `RecursiveCharacterTextSplitter`, `Document` | Chunking with metadata |
+| `HuggingFaceEmbeddings`, `FAISS` | Vector store |
+| `BaseRetriever` (our own hybrid retriever) | Per-paper search |
+| `ChatPromptTemplate`, LCEL chains (`prompt \| llm \| parser`), `StrOutputParser` | Single-paper and cross-paper answers |
+| `PydanticOutputParser` | Structured gap list |
+| `RunnableWithMessageHistory`, `MessagesPlaceholder` | Memory for follow-up questions |
 
----
-
-## Sample test cases (real outputs from the notebook)
-
-### Test 1: structured gap extraction (`gap_limitations`)
-
-**Question:** *What limitations are repeatedly mentioned across the papers?*
-
-The pipeline retrieves the top chunks from each paper, summarises each paper's evidence (map), then returns a typed `ResearchGapList` (Step 9). It found 8 gaps. Three of them:
-
-```
-GAP: Both studies use small, demographically narrow samples, limiting statistical power and generalizability.
-  Papers: ['Adegboye2021', 'Saha2024']
-  - [Adegboye2021 p7] The system was evaluated on a relatively small test set (40 cases shown in the confusion matrix).
-  - [Saha2024 p16] The sample is limited in size and demographic breadth; a more varied sample representing many populations would improve generalizability.
-
-GAP: EEG data collection is restricted to frontal-lobe electrodes, introducing spatial bias and omitting information from other brain regions.
-  Papers: ['Khan2024']
-  - [Khan2024 p24] The study selected only frontal-lobe electrodes to keep the sensor count low, which introduces a certain degree of bias toward the frontal lobe.
-
-GAP: Data were collected via email or social media from voluntary participants, creating a self-selection bias that may limit broader applicability.
-  Papers: ['Saha2024']
-  - [Saha2024 p7] Data were collected via email or social media from voluntary participants, implying a self-selection bias ...
-```
-
-Each gap lists the papers that mention it, and every piece of evidence carries a paper label and page. The full output is in `eval/structured_gaps_sample.json`.
-
-**What to note:** only one gap was shared by two papers. The strict merge rule (two papers go under one gap only if they share the same *cause*, not just the same downstream effect) kept "small sample" and "frontal-lobe only" separate, as intended. The "40 cases" evidence for Adegboye is the model's reading of a confusion matrix, not a limitation the authors wrote, so it is weaker evidence than the Saha quote next to it.
-
-### Test 2: a hard question, before and after the retrieval fix (`failure_pca_count`)
-
-**Question:** *How many papers use PCA?* The answer sits in the Methods sections, which the old section-gated search never looked at.
-
-| | Answer |
-|---|---|
-| **v1** (old, section-gated) | "None of the papers mention using PCA ... Therefore, 0 papers out of the provided summaries use PCA." |
-| **v2** (whole-paper hybrid retrieval) | "2 papers use PCA." Chattopadhyay2017: applied PCA to extract hidden features and reduce dimensionality (p4), with eigenvalues and seven principal components (p5 to p6). Saha2024 is also listed (p4). Zulfiker2021 is correctly excluded: PCA appears only as a benchmark (p2). |
-
-The fix works: v1 said 0, v2 found Chattopadhyay's real use of PCA with page citations. **But v2 is not fully right.** The Saha2024 hit is quoted as "as a dimensionality reduction method, *they* also employ Principal Component Analysis ...", which reads like a description of *other* work in the paper's related-work text, not Saha's own method. So the "2" is probably an overcount. This is the related-work leakage problem described in the limitations below.
-
----
-
-## 1. What it does, step by step
+### What each notebook step does
 
 | Step | What happens |
 |---|---|
@@ -139,129 +135,152 @@ The fix works: v1 said 0, v2 found Chattopadhyay's real use of PCA with page cit
 | 12. Backup | Zips the whole workspace so a fresh Colab session can resume. |
 | Appendix A | Optional stricter-prompt experiment (v3). Not part of the reported results. |
 
-**The key design decision:** early versions only searched "Discussion" or "Conclusion" sections for limitations. That is a trap, because a limitation can sit in Methods (a caveat) or in a results table. The fixed version searches the whole paper by meaning and keeps "section" only as a label.
+**The key design decision:** early versions only searched "Discussion" or "Conclusion" sections for limitations. That is a trap, because a limitation can sit in Methods (a caveat) or in a results table. The fixed version searches the whole paper by meaning and keeps "section" only as a label. (Proof in Section 5.)
 
 ---
 
-## 2. Setup and how to run
+## 4. Try it with ANY question (live demo)
 
-**Colab secrets** (key icon in the sidebar, enable notebook access):
+**Step A. Get the notebook ready.** Run the notebook cells from **Step 0 down to Step 8** (one after another, not "Run all"). This loads everything and makes no expensive calls. If you are in a fresh Colab session, restore from the backup first (see Section 7).
 
-| Secret | Needed for |
+**Step B. Paste this helper into a new cell and run it once.** It lets you ask any question in one line:
+
+```python
+def ask(question, paper=None, k=3):
+    """Ask ANY question. paper=None -> all 5 papers. paper='Saha' -> just that paper (name part is enough)."""
+    if paper:
+        label = next((p for p in PAPER_LABELS if paper.lower() in p.lower()), None)
+        if label is None:
+            print("No such paper. Choose from:", PAPER_LABELS); return
+        hits = per_paper_retrieve(question, k=k, papers=[label])[label]
+        context = "\n\n".join(f"(p{h.metadata['page']}) {h.page_content}" for h in hits)
+        answer = safe_invoke(single_paper_chain, {"paper": label, "context": context, "question": question})
+        print(f"\nQ: {question}\nPAPER: {label}\n\nANSWER:\n{answer}\n")
+        check_grounding(answer, hits)
+    else:
+        answer, hits = cross_paper_synthesize(question, k=k)
+    print("\nSOURCES THE AI WAS ALLOWED TO USE:")
+    for h in hits:
+        m = h.metadata
+        print(f"  [{m['paper']} | {m['section']} | p{m['page']}] {h.page_content[:90]}...")
+    return answer
+```
+
+**Step C. Ask anything:**
+
+```python
+ask("What datasets do the papers use?")                                   # all 5 papers (6 AI calls)
+ask("What accuracy did this paper achieve?", paper="Khan")                # one paper (1 AI call)
+ask("Which papers use fuzzy logic and how?")
+ask("What future work do the authors suggest?", paper="Zulfiker")
+```
+
+**What you will see:** the answer with page numbers, then a **grounding check** line (did it only cite pages it was actually given?), then the exact **sources** (paper, section, page) it was allowed to use. That last part is your proof that nothing came from outside the papers.
+
+**If the AI says it can't find something**, that is correct behaviour, not a bug: it is told to say so instead of guessing.
+
+---
+
+## 5. Proof that it works, and proof of what we fixed
+
+### The biggest lesson: v1 vs v2
+
+Our **first version (v1)** only searched certain sections (Discussion, Conclusion, Results) when looking for limitations. That sounds smart, but it is a trap: a limitation can be hidden anywhere, for example in Methods or in a table.
+
+Our **fixed version (v2)** searches the whole paper by meaning and keywords, and uses "section" only as a label on the citation.
+
+We ran the same 6 questions on both and saved the results (`eval/results_v1.json`, `eval/results_v2_groq.json`). Since v1 ran on Gemini and v2 on Groq, the two runs also differ in model, not only in retrieval.
+
+| Question | v1 (old) | v2 (fixed) |
+|---|---|---|
+| What limitations are repeated? | short answer, 0 page citations | 8 citations across 5 pages |
+| Which methods are compared? | 1 citation | 15 citations across 9 pages |
+| What problems remain unresolved? | 2 citations | 12 citations across 6 pages |
+| What future work is proposed? | 3 citations | 8 citations across 4 pages |
+| Which paper has the highest accuracy? | named no paper, gave no figure | named all 5 papers, cited figures |
+| How many papers use PCA? | **0** | **2** |
+
+The "no relevant evidence found" answers dropped from 13 to 0 in total.
+
+> These numbers show that the system **answers**. They do not prove the answers are **correct**. The next part shows the checking.
+
+### The clearest proof: "How many papers use PCA?"
+
+| | Answer |
 |---|---|
-| `Groq_API` | Primary LLM (used for the reported results) |
-| `Gemini_API` | Optional fallback, used if Groq is unavailable or out of quota |
+| **v1** | "None of the papers mention PCA ... 0 papers." |
+| **v2** | "2 papers use PCA." Chattopadhyay2017 applied PCA (p4) with seven principal components (p5 to p6). Saha2024 is also listed (p4). Zulfiker2021 is correctly excluded, because PCA appears there only as a benchmark (p2). |
 
-At least one must be set.
+The fix works: v1 missed Chattopadhyay's real use of PCA and v2 found it with page numbers. **But v2 is not perfectly right.** The Saha2024 line was quoted as *"as a dimensionality reduction method, **they** also employ PCA"*, which sounds like the authors describing *other people's* work. So "2" is probably one too many. We kept this as a finding instead of hiding it.
 
-**Fresh start:** run Step 0 to Step 12 in order. Step 1 asks you to upload the 5 PDFs (or put them in `papers/` first).
+### How we checked that answers are grounded
 
-**Resume from a backup:** run Step 0, then the "Option B" restore cell, skip Steps 1 to 2, and continue from Step 3.
-
-> **Do not use "Run all" repeatedly.** The evaluation is switched **off** by default (`RUN_EVAL = False` in Step 0) so it cannot burn the free-tier quota. Saved outputs in `eval/` are the test evidence. To re-run it, set `RUN_EVAL = True`; it is resumable and skips questions already saved (about 36 LLM calls).
-
----
-
-## 3. Try it yourself
-
-**One paper** (Step 7):
-
-```python
-paper = "Saha2024 (Fuzzy logic depression level)"
-question = "What limitations or shortcomings does this paper mention?"
-
-hits = per_paper_retrieve(question, k=3, papers=[paper])[paper]
-context = "\n\n".join(f"(p{h.metadata['page']}) {h.page_content}" for h in hits)
-answer = safe_invoke(single_paper_chain, {"paper": paper, "context": context, "question": question})
-print(answer)
-check_grounding(answer, hits)
-```
-
-**With memory** (Step 10):
-
-```python
-ask_with_memory(paper, "What limitations does this paper mention?")
-ask_with_memory(paper, "Of those, which seems easiest for future researchers to actually fix?")
-```
-
-**Across all papers, free text** (Step 8, 6 LLM calls):
-
-```python
-final, hits = run_topic("gap_limitations", show_retrieval=True)
-```
-
-**Across all papers, structured** (Step 9, 6 LLM calls):
-
-```python
-t = TOPICS["gap_limitations"]
-result, hits = analyze_gap(t["question"], k=t["k"], search=t["search"], per_paper_q=t["per_paper"])
-result.model_dump()     # plain dict, ready for a report or slide
-```
-
-Paper labels are in `PAPER_LABELS`; the six evaluation questions are defined once in `TOPICS` (Step 4.3).
-
----
-
-## 4. Evaluation
-
-Six fixed questions run through the cross-paper pipeline, saved after every question. Two runs are kept as evidence:
-
-| Run | File | Pipeline |
+| Check | What it tests | What it can't catch |
 |---|---|---|
-| v1 | `eval/results_v1.json` | Old: Gemini, section-gated retrieval |
-| v2 | `eval/results_v2_groq.json` | Fixed: Groq `gpt-oss-120b`, whole-paper hybrid retrieval |
+| **Page check** (`check_grounding`) | Every page the answer cites was actually among the pages given to the AI | A correct page with the wrong claim |
+| **Quote check** (`verify_quotes`, Step 11.4) | Every quoted phrase really appears in that paper's retrieved text | A real quote taken from the paper's related-work section |
+| **Reading it ourselves** | Compare the answer to the PDF | (slow, but it caught the Saha error above) |
 
-| Key | Question | Why it is included |
+Conclusion: the answers are **grounded in the source text** (nothing invented), but **not always correctly attributed** (a sentence about another study can be credited to the paper that cites it).
+
+---
+
+## 6. Where it fails, and what we would do next
+
+| Problem | What happens | Fix we would try |
 |---|---|---|
-| `gap_limitations` | What limitations are repeatedly mentioned across the papers? | Core synthesis |
-| `gap_comparisons` | Which approaches or methods are compared across the papers? | Core synthesis |
-| `gap_unresolved` | What problems remain unresolved across the papers? | Core synthesis |
-| `gap_future_work` | What future work do the authors propose across the papers? | Core synthesis |
-| `conflict_accuracy` | Which paper reports the highest accuracy? | **Hard:** the answer is a number inside a results table |
-| `failure_pca_count` | How many papers use PCA? | **Hard:** the answer sits in Methods, which the old search never looked at |
-
-### Scorecard (Step 11.2, surface metrics, no API calls)
-
-| Question | v1 "no evidence" phrases | v1 cited pages | v2 "no evidence" phrases | v2 cited pages |
-|---|---|---|---|---|
-| `gap_limitations` | 2 | 0 | 0 | 5 |
-| `gap_comparisons` | 1 | 1 | 0 | 9 |
-| `gap_unresolved` | 1 | 1 | 0 | 6 |
-| `gap_future_work` | 2 | 3 | 0 | 4 |
-| `conflict_accuracy` | 1 | 0 | 0 | 1 |
-| `failure_pca_count` | 6 | 2 | 0 | 5 |
-
-These numbers show **whether the system answered**, not whether the answers are correct. "Cited pages" is the count of distinct page numbers in the answer.
-
-### Result
-
-With the fix, every question returned a page-cited answer instead of "no relevant evidence", and the PCA question found Chattopadhyay's use of PCA (v1 reported 0 papers).
-
-**The two hard questions are only partly solved:**
-- **PCA:** the count of 2 is probably an overcount (see Test 2 above).
-- **Highest accuracy:** v2 surfaces the 96.9 figure but not the 92.03 figure the scorecard checks for, and some accuracy figures come from tables describing *other* studies rather than the paper's own results.
-
-Across the limitation and future-work questions, some answers credit a paper with claims from its related-work section. See Section 5.
+| **Related-work leakage** | Text where a paper describes *other* studies can be retrieved and credited to that paper (causes the PCA overcount and some accuracy figures) | Down-weight `related_work` chunks for questions about a paper's *own* methods or results |
+| **Shallow grounding check** | Page check only confirms the page exists, not that the claim belongs to that paper | Also check which section a quote came from |
+| **Chunks can start mid-sentence** | One garbled claim in our results | Split on sentence boundaries |
+| **Memory helps the answer, not the search** | In "which of those is easiest to fix?", the search still uses the literal words "those" | Add a step that rewrites the follow-up into a full question before searching |
+| **Free-tier limits** | Quotas change; if all are used up for the day, you must wait | Fallback list of models and providers (built), paid tier for real use |
+| **Only 5 papers** | Enough to show the method, not to claim general results | Test on more papers |
+| **Gap merging is a model judgement** | It may merge or split gaps differently on another run | Strict merge rule in the prompt (built); human review |
 
 ---
 
-## 5. Known limitations
+## 7. Run it yourself
 
-- **Related work leaks in.** Retrieval searches the whole paper, so related-work text that describes *other* studies can be retrieved and then attributed to the paper itself. This caused the probable Saha2024 PCA overcount and some accuracy figures taken from other studies' tables.
-- **Grounding checks are partial.** `check_grounding` only confirms that cited page numbers exist somewhere in the retrieved set. The stronger `verify_quotes` (Step 11.4) checks that each quoted span appears in the *same paper's* retrieved chunks, but a quote from that paper's related-work section still passes, because it really is in the paper.
-- **Chunks can start mid-sentence.** Fixed-size chunking occasionally cuts a sentence in half, which produced one garbled claim.
-- **Memory helps the answer, not the search.** In a follow-up like "which of those is easiest to fix?", the pronouns are resolved for writing the answer, but retrieval still searches with the literal follow-up text. A "condense question" step before retrieval would fix this; it is not built.
-- **Section labels are tuned to these papers.** The heading vocabulary assumes IMRaD-structured academic papers. It is only a citation label, never a filter, but it would not recognise headings in, say, a legal contract.
-- **Free LLM tiers are volatile.** Model availability and quotas change. The notebook falls back across a candidate list and then to the other provider, but if everything is exhausted for the day, retries cannot help; wait for the quota reset.
-- **Gap merging is a judgment call by the model.** If it over- or under-merges on a given question, that is a finding about instruction-following at this level of nuance, not a bug.
+**Files in this submission**
 
-**Proposed improvements:** exclude or down-weight `related_work` chunks for questions about a paper's *own* methods and limitations; split on sentence boundaries; add the condense-question step for follow-ups; add a quote-to-section check so a quote from related work is flagged.
+| File | What it is |
+|---|---|
+| `GAI_ResearchGapAnalyzer_clean.ipynb` | The notebook (Steps 0 to 12) |
+| `Architecture_Phase1.png` | Architecture diagram |
+| `eval/results_v1.json` | Old pipeline answers (evidence of the problem) |
+| `eval/results_v2_groq.json` | Fixed pipeline answers (evidence of the fix) |
+| `eval/structured_gaps_sample.json` | Sample structured output |
+
+**Setup in Google Colab**
+
+1. Add Colab secrets (key icon, enable notebook access): `Groq_API` (main LLM) and optionally `Gemini_API` (fallback). At least one is needed. Embeddings and search are local and need no key.
+2. Run Step 0 to Step 8 in order. Step 1 asks you to upload the 5 PDFs.
+3. Use the `ask()` helper from Section 4.
+
+**Fresh Colab session?** Upload `ResearchGapAnalyzer_backup_v2.zip`, run Step 0, run the "Option B" restore cell, skip Steps 1 and 2, then continue from Step 3.
+
+**Do not press "Run all" repeatedly.** The formal evaluation is switched off (`RUN_EVAL = False`) so it cannot use up the free quota. The saved files in `eval/` are our test evidence. To re-run it, set `RUN_EVAL = True`; it is resumable (about 36 AI calls).
+
+The step-by-step table in Section 3 is the notebook map.
 
 ---
-
-## 6. Saving your work
-
-Step 12 zips everything needed to resume (papers, extracted text, `chunks.json`, FAISS index, all eval results) and downloads it. Upload the zip in a fresh session and use Option B in Step 0.
+ 
+## 8. Restore from the backup (fresh Colab session)
+ 
+Don't use "Run all". Upload `ResearchGapAnalyzer_backup_v2.zip` to `/content`, then run these cells in order:
+ 
+1. **Step 0** (both cells). Keep `RUN_EVAL = False`.
+2. **Option B** (restores the saved files). By hand: `!unzip -o /content/ResearchGapAnalyzer_backup_v2.zip -d /`
+3. **Step 3** (embeddings + FAISS), then **Step 4** (4.1, 4.2, 4.3).
+4. **Step 5** (connect the LLM), then **Step 6** (helpers).
+5. **Step 7** (only if you want single-paper questions), then **Step 8** (definitions only, no calls).
+6. **Step 9** (regenerates the structured sample, about 6 calls).
+7. **11.2** (scorecard) and **11.3** (read saved answers). Both are free.
+Then paste the `ask()` helper from Section 4.
+ 
+> Use `-d /`, not `-d /content/`: the zip's paths already start with `content/`.
+ 
+**Skip these** (extra API calls or optional): Step 10, the formal evaluation (Step 11 / `RUN_EVAL`), 11.4, Appendix A. The saved files `eval/results_v1.json` and `eval/results_v2_groq.json` are used instead.
 ---
 
 ## 👤 Authors
