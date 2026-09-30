@@ -280,7 +280,7 @@ Then paste the `ask()` helper from Section 4.
  
 > Use `-d /`, not `-d /content/`: the zip's paths already start with `content/`.
  
-**Skip these** (extra API calls or optional): Step 10, the formal evaluation (Step 11 / `RUN_EVAL`), 11.4, Appendix A. The saved files `eval/results_v1.json` and `eval/results_v2_groq.json` are used instead.
+Skip these: (extra API calls or optional): Step 10, the formal evaluation (Step 11 / `RUN_EVAL`), 11.4, Appendix A. The saved files `eval/results_v1.json` and `eval/results_v2_groq.json` are used instead.
 ---
 
 ## 👤 Authors
